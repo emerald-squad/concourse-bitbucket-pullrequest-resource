@@ -24,6 +24,12 @@ payload=$(tmpfile request)
 
 cat > "$payload" <&0
 
+enable_debug=$(jq -r '.source.debug // false' < ${payload})
+if [ "${enable_debug}" = "true" ]; then
+  echo "Enable debug mode"
+  set -x
+fi
+
 log "Configuring git credentials"
 load_pubkey "$payload"
 
@@ -68,7 +74,7 @@ pull_requests=$(jq -r '.[] | [.id, .fromRef.latestCommit, .toRef.latestCommit, .
 if [ -n "$pull_requests" ]; then
   # Check if the current version is still valid
   if [[ "$current_change" -gt 0 ]] && (jq -e --argjson version "$current_version" '.[] | select(
-    .id == (($version.id//0)|tonumber) 
+    .id == (($version.id//0)|tonumber)
     and .fromRef.latestCommit == $version.from
     and .toRef.latestCommit == $version.to)' > /dev/null <<< "$pull_requests_json"); then
       versions="[$current_version]"

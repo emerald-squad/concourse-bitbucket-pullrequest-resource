@@ -103,9 +103,11 @@ pullrequest_metadata() {
   # $1: pull request number
   # $2: pull request repository
   # $3: skip ssl verification
+  # $4: source_commit
+  # $5: target_commit
 
-  local source_commit=$(git rev-list --parents -1 $(git rev-parse HEAD) | awk '{print $3}')
-  local target_commit=$(git rev-list --parents -1 $(git rev-parse HEAD) | awk '{print $2}')
+  local source_commit=$4
+  local target_commit=$5
 
   jq -n "[]" | \
     add_pullrequest_metadata_basic "$1" "$2" "$3" | \

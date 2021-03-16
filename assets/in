@@ -30,6 +30,12 @@ payload=$(tmpfile request)
 
 cat > "$payload" <&0
 
+enable_debug=$(jq -r '.source.debug // false' < ${payload})
+if [ "${enable_debug}" = "true" ]; then
+  log "Enable debug mode"
+  set -x
+fi
+
 load_pubkey "$payload"
 configure_credentials "$payload"
 
@@ -47,6 +53,27 @@ disable_git_lfs=$(jq -r '(.params.disable_git_lfs // false)' < "$payload")
 prq_id=$(jq -r '.version.id // ""' < "$payload")
 prq_date=$(jq -r '.version.date // ""' < "$payload")
 prq_change=$(jq -r '.version.change // ""' < "$payload")
+
+# parse uri and retrieve host
+uri_parser "$uri"
+repo_host="${uri_schema}://${uri_address}"
+repo_host=${repo_host}$(getBasePathOfBitbucket)
+
+# determine repository name for calling REST api
+repo_name=$(basename "$uri" | sed "s/.git$//")
+repo_project=$(basename $(dirname "$uri"))
+
+# verify target branch of prq
+prq=$(bitbucket_pullrequest "$repo_host" "$repo_project" "$repo_name" "$prq_id" "" "$skip_ssl_verification")
+
+prq_from=$(echo "$prq" | jq -r '.fromRef.latestCommit')
+prq_from_branch=$(echo "$prq" | jq -r '.fromRef.displayId')
+prq_target=$(echo "$prq" | jq -r '.toRef.latestCommit')
+prq_target_branch=$(echo "$prq" | jq -r '.toRef.displayId')
+
+log "Detected branches"
+log "From: ${prq_from_branch} (${prq_from})"
+log "Target: ${prq_target_branch} (${prq_target})"
 
 configure_git_ssl_verification "$skip_ssl_verification"
 configure_git_global "${git_config_payload}"
@@ -66,14 +93,12 @@ if test "$depth" -gt 0 2> /dev/null; then
   depthflag="--depth $depth"
 fi
 
-branch="pull-requests/${prq_id}/merge"
-
 log "Cloning $uri in $destination"
 git clone $depthflag "$uri" "$destination"
 cd "$destination"
 
-git fetch $depthflag origin "+refs/${branch}:refs/remotes/origin/${branch}"
-git checkout -B $branch origin/$branch
+git fetch $depthflag origin "${prq_from_branch}"
+git checkout -B "${prq_from_branch}" "origin/${prq_from_branch}"
 
 ref=$(git rev-parse HEAD)
 
@@ -119,49 +144,32 @@ if [ "$disable_git_lfs" != "true" ]; then
   git submodule foreach "git lfs fetch && git lfs checkout"
 fi
 
-# calculate source and target commit
-source_commit=$(git rev-list --parents -1 $ref | awk '{print $3}')
-target_commit=$(git rev-list --parents -1 $ref | awk '{print $2}')
-
-if [ -z "$source_commit" ]; then
+if [ -z "$prq_from" ]; then
   log "Unable to determine source commit from merge commit $ref. Please verify depth configuration."
   exit 1
 fi
 
-if [ -z "$target_commit" ]; then
+if [ -z "$prq_target" ]; then
   log "Unable to determine target commit from merge commit $ref. Please verify depth configuration."
   exit 1
 fi
 
-# parse uri and retrieve host
-uri_parser "$uri"
-repo_host="${uri_schema}://${uri_address}"
-repo_host=${repo_host}$(getBasePathOfBitbucket)
-
-# determine repository name for calling REST api
-repo_name=$(basename "$uri" | sed "s/.git$//")
-repo_project=$(basename $(dirname "$uri"))
-
-# verify target branch of prq
-prq=$(bitbucket_pullrequest "$repo_host" "$repo_project" "$repo_name" "$prq_id" "" "$skip_ssl_verification")
-
 if [ "$prq" != "ERROR" ]; then
-  branch=$(echo "$prq" | jq -r '.fromRef.displayId')
+  from_branch=$(echo "$prq" | jq -r '.fromRef.displayId')
 fi
-
 
 # expose configuration of pull request that can be used in container
 git config --add pullrequest.id $prq_id
-git config --add pullrequest.source $source_commit
-git config --add pullrequest.target $target_commit
+git config --add pullrequest.source $prq_from
+git config --add pullrequest.target $prq_target
 git config --add pullrequest.merge $ref
 git config --add pullrequest.date "$prq_date"
 git config --add pullrequest.change "$prq_change"
-git config --add pullrequest.branch "$branch"
+git config --add pullrequest.branch "$from_branch"
 
 jq -n \
   --argjson version "$(jq '.version' < "$payload")" \
-  --argjson metadata "$(pullrequest_metadata "$prq_id" "$uri" "$skip_ssl_verification")" \
+  --argjson metadata "$(pullrequest_metadata "$prq_id" "$uri" "$skip_ssl_verification" "$prq_from" "$prq_target")" \
 '{
   version: $version,
   metadata: $metadata

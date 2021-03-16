@@ -1,4 +1,4 @@
-FROM gliderlabs/alpine:edge
+FROM alpine:3.13.2
 
 RUN apk --update add \
   ca-certificates \

@@ -65,6 +65,8 @@ It will accept a regular expression as determined by [egrep](http://linuxcommand
 * `rebuild_phrase`: *Optional (default: test this please).* Regular expression as determined by [egrep](http://linuxcommand.org/man_pages/egrep1.html) will match all comments in pull request overview.
 If a match is found the pull request will be rebuilt.
 
+* `debug`: *Optional (default: false).* If set to `true` the bash tracing (`set -x`) will be enabled for the `in`, `out` and `check` scripts.
+
 ## Behavior
 
 ### `check`: Search for pull requests to build.
@@ -131,6 +133,7 @@ resources:
     username: {{bitbucket-username}}
     password: {{bitbucket-password}}
     uri: https://bitbucket.exemple.net/scm/exemple-project/exemple-repo.git
+    debug: true
 
 jobs:
 - name: test pull request
