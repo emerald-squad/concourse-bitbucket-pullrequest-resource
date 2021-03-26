@@ -147,6 +147,7 @@ prq=$(bitbucket_pullrequest "$repo_host" "$repo_project" "$repo_name" "$prq_id" 
 
 if [ "$prq" != "ERROR" ]; then
   branch=$(echo "$prq" | jq -r '.fromRef.displayId')
+  target_branch=$(echo "$prq" | jq -r '.toRef.displayId')
 fi
 
 
@@ -158,6 +159,7 @@ git config --add pullrequest.merge $ref
 git config --add pullrequest.date "$prq_date"
 git config --add pullrequest.change "$prq_change"
 git config --add pullrequest.branch "$branch"
+git config --add pullrequest.targetbranch "$target_branch"
 
 jq -n \
   --argjson version "$(jq '.version' < "$payload")" \
